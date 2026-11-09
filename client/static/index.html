@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracker Chat</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5f6b7a; --line: #dde2e8;
+    --accent: #2f6fde; --accent-text: #ffffff; --you: #e7effc; --warn-bg: #fff6e0; --warn-line: #e6b54a;
+    --danger: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ee; --muted: #9aa4b2; --line: #2c323d;
+      --accent: #6c9cf0; --accent-text: #0d1117; --you: #233350; --warn-bg: #3a2f14; --warn-line: #a8842c;
+      --danger: #f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; min-height: 100vh; display: flex; flex-direction: column; gap: 12px; }
+  header h1 { font-size: 20px; margin: 0; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 300px; }
+  .msg { padding: 8px 12px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .you { align-self: flex-end; background: var(--you); }
+  .bot { align-self: flex-start; border: 1px solid var(--line); }
+  .sys { align-self: center; color: var(--muted); font-size: 13px; }
+  .approval { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 12px; }
+  .approval code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; margin: 6px 0; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=text], input[type=password] { flex: 1; min-width: 0; padding: 10px; border-radius: 8px;
+         border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  button { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent);
+           color: var(--accent-text); font: inherit; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--text); border-color: var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  .chips button { font-size: 13px; padding: 6px 10px; }
+  .error { color: var(--danger); font-size: 13px; min-height: 1em; margin: 6px 0 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Tracker Chat</h1>
+    <p>A LangGraph agent over two MCP servers (habit-check, job-tracker). Read tools run straight away;
+       every write waits for your approval. <span id="demo-note" hidden>Demo data: fictional, resets when the app restarts.</span></p>
+  </header>
+
+  <section id="login" class="panel">
+    <form id="login-form" class="row">
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password" required>
+      <button type="submit">Unlock</button>
+    </form>
+    <p id="login-error" class="error" role="alert"></p>
+  </section>
+
+  <section id="chat" hidden>
+    <div id="log" class="panel" aria-live="polite"></div>
+    <div class="row chips" style="margin:10px 0">
+      <button class="secondary" type="button">Show my habits today</button>
+      <button class="secondary" type="button">What are my streaks?</button>
+      <button class="secondary" type="button">Which applications need a follow-up?</button>
+      <button class="secondary" type="button">Check off study</button>
+    </div>
+    <form id="chat-form" class="row">
+      <input id="message" type="text" maxlength="1000" placeholder="Ask about your habits or applications" aria-label="Message" autocomplete="off">
+      <button id="send" type="submit">Send</button>
+    </form>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+  del(k) { try { sessionStorage.removeItem(k); } catch {} },
+};
+let password = store.get("pw");
+let sessionId = store.get("sid");
+let busy = false;
+
+// Model output is always inserted with textContent (never innerHTML), so it can't inject HTML.
+function add(kind, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + kind;
+  div.textContent = text;
+  $("log").appendChild(div);
+  $("log").scrollTop = $("log").scrollHeight;
+  return div;
+}
+
+function setBusy(on) {
+  busy = on;
+  $("send").disabled = on;
+  $("message").disabled = on;
+  document.querySelectorAll(".chips button").forEach(b => b.disabled = on);
+}
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: { "Content-Type": "application/json", "X-App-Password": password || "" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { lock("Wrong password."); throw new Error("401"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || ("HTTP " + res.status));
+  return data;
+}
+
+function lock(message) {
+  password = null; store.del("pw");
+  $("chat").hidden = true; $("login").hidden = false;
+  $("login-error").textContent = message || "";
+}
+
+function handle(data) {
+  sessionId = data.session_id; store.set("sid", sessionId);
+  if (data.approval) { showApproval(data.approval); return; }
+  add("bot", data.reply || "(no reply)");
+  setBusy(false);
+  $("message").focus();
+}
+
+function showApproval(calls) {
+  const box = document.createElement("div");
+  box.className = "approval";
+  const title = document.createElement("strong");
+  title.textContent = "Approval needed: these tools write to the data";
+  box.appendChild(title);
+  for (const c of calls) {
+    const code = document.createElement("code");
+    code.textContent = c.tool + "(" + JSON.stringify(c.args, null, 1) + ")";
+    box.appendChild(code);
+  }
+  const row = document.createElement("div");
+  row.className = "row";
+  const yes = document.createElement("button"); yes.textContent = "Approve";
+  const no = document.createElement("button"); no.textContent = "Decline"; no.className = "secondary";
+  row.append(yes, no);
+  box.appendChild(row);
+  $("log").appendChild(box);
+  $("log").scrollTop = $("log").scrollHeight;
+  const answer = async (ok) => {
+    yes.disabled = no.disabled = true;
+    title.textContent = ok ? "Approved" : "Declined";
+    try { handle(await api("/api/approve", { session_id: sessionId, approve: ok })); }
+    catch (e) { if (e.message !== "401") add("sys", e.message); setBusy(false); }
+  };
+  yes.onclick = () => answer(true);
+  no.onclick = () => answer(false);
+  yes.focus();
+}
+
+async function send(text) {
+  text = text.trim();
+  if (!text || busy) return;
+  add("you", text);
+  $("message").value = "";
+  setBusy(true);
+  const thinking = add("sys", "Thinking…");
+  try { const data = await api("/api/chat", { session_id: sessionId, message: text }); thinking.remove(); handle(data); }
+  catch (e) { thinking.remove(); if (e.message !== "401") add("sys", e.message); setBusy(false); }
+}
+
+async function unlock() {
+  try {
+    await api("/api/check");
+    store.set("pw", password);
+    $("login").hidden = true; $("chat").hidden = false;
+    $("message").focus();
+  } catch (e) { if (e.message !== "401") lock("Could not reach the server: " + e.message); }
+}
+
+$("login-form").onsubmit = (e) => { e.preventDefault(); password = $("password").value; $("password").value = ""; unlock(); };
+$("chat-form").onsubmit = (e) => { e.preventDefault(); send($("message").value); };
+document.querySelectorAll(".chips button").forEach(b => b.onclick = () => send(b.textContent));
+fetch("/api/health").then(r => r.json()).then(d => { $("demo-note").hidden = !d.demo; }).catch(() => {});
+if (password) unlock();
+</script>
+</body>
+</html>

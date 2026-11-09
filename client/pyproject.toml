@@ -1,0 +1,22 @@
+[project]
+name = "mcp-client"
+version = "0.1.0"
+description = "Terminal LangGraph chat client for my local MCP servers, with approval before writes"
+readme = "README.md"
+authors = [
+    { name = "Aarsh Desai", email = "desai186@purdue.edu" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.162.2",
+    "langchain-mcp-adapters>=0.3.2",
+    "langchain-openai>=1.7.4",
+    "langgraph>=1.2.20",
+    "python-dotenv>=1.2.4",
+    "uvicorn>=0.54.0",
+]
+
+[tool.uv]
+# Project lives in OneDrive, which rejects hardlinks into the uv cache (os error 396)
+link-mode = "copy"
+package = false

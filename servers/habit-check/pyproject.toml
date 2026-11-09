@@ -1,0 +1,19 @@
+[project]
+name = "habit-check"
+version = "0.1.0"
+description = "Local MCP server for daily habit check-ins and streaks"
+readme = "README.md"
+authors = [
+    { name = "Aarsh Desai", email = "desai186@purdue.edu" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "fastmcp>=4.1.6",
+]
+
+[tool.uv]
+# Project lives in OneDrive, which rejects hardlinks into the uv cache (os error 396)
+link-mode = "copy"
+# A single-script server, not an installable package: no build step needed
+package = false

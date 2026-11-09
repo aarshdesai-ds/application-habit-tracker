@@ -1,0 +1,17 @@
+# Render Blueprint: one free Docker web service.
+# Secrets marked "sync: false" are NOT stored here; Render asks you for them in the dashboard.
+services:
+  - type: web
+    name: tracker-demo
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: MESSAGES_PER_HOUR
+        value: "60"
