@@ -1,6 +1,6 @@
 # Tracker Chat: a LangGraph agent over two MCP servers, with human approval for every write
 
-**Live demo:** [add your Render URL here] (password-protected; see [Demo notes](#demo-notes))
+**Live demo:** https://tracker-demo-wtzy.onrender.com/ (password-protected; see [Demo notes](#demo-notes))
 
 Tracker Chat is a small chat assistant for two parts of a job search: **daily habits** (LeetCode, applications, gym, study, sleep) and **job applications** (status, follow-ups). A LangGraph agent reaches both trackers through the **Model Context Protocol (MCP)**. Each tracker is its own MCP server, running as a stdio subprocess.
 
